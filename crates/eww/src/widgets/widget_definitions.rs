@@ -8,7 +8,7 @@ use crate::{
 use anyhow::{anyhow, Context, Result};
 use codespan_reporting::diagnostic::Severity;
 use eww_shared_util::Spanned;
-use gdk::{ModifierType, NotifyType};
+use gdk::{AnchorHints, Display, Gravity, ModifierType, NotifyType, Rectangle, SeatCapabilities};
 
 use glib::translate::FromGlib;
 use gtk::{self, glib, prelude::*, DestDefaults, TargetEntry, TargetList};
@@ -60,6 +60,7 @@ macro_rules! connect_signal_handler {
 pub const BUILTIN_WIDGET_NAMES: &[&str] = &[
     WIDGET_NAME_BOX,
     WIDGET_NAME_CENTERBOX,
+    WIDGET_NAME_POPOVERED,
     WIDGET_NAME_EVENTBOX,
     WIDGET_NAME_TOOLTIP,
     WIDGET_NAME_CIRCULAR_PROGRESS,
@@ -88,6 +89,7 @@ pub const BUILTIN_WIDGET_NAMES: &[&str] = &[
 pub(super) fn widget_use_to_gtk_widget(bargs: &mut BuilderArgs) -> Result<gtk::Widget> {
     let gtk_widget = match bargs.widget_use.name.as_str() {
         WIDGET_NAME_BOX => build_gtk_box(bargs)?.upcast(),
+        WIDGET_NAME_POPOVERED => build_popovered(bargs)?.upcast(),
         WIDGET_NAME_CENTERBOX => build_center_box(bargs)?.upcast(),
         WIDGET_NAME_EVENTBOX => build_gtk_event_box(bargs)?.upcast(),
         WIDGET_NAME_TOOLTIP => build_tooltip(bargs)?.upcast(),
@@ -624,6 +626,118 @@ fn build_tooltip(bargs: &mut BuilderArgs) -> Result<gtk::Box> {
                 tooltip.set_custom(Some(&tooltip_content));
                 true
             });
+
+            Ok(gtk_widget)
+        }
+    }
+}
+
+
+const WIDGET_NAME_POPOVERED: &str = "popovered";
+/// @widget popovered
+/// @desc a widget that will display a popover when clicked.
+fn build_popovered(bargs: &mut BuilderArgs) -> Result<gtk::Box> {
+    let gtk_widget = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    gtk_widget.add_events(gdk::EventMask::BUTTON_PRESS_MASK);
+
+    match bargs.widget_use.children.len().cmp(&2) {
+        Ordering::Less => {
+            Err(DiagError(gen_diagnostic!("popovered must contain exactly 2 elements", bargs.widget_use.span)).into())
+        }
+        Ordering::Greater => {
+            let (_, additional_children) = bargs.widget_use.children.split_at(2);
+            // we know that there is more than two children, so unwrapping on first and last here is fine.
+            let first_span = additional_children.first().unwrap().span();
+            let last_span = additional_children.last().unwrap().span();
+            Err(DiagError(gen_diagnostic!("popovered must contain exactly 2 elements, but got more", first_span.to(last_span)))
+                .into())
+        }
+        Ordering::Equal => {
+            let mut children = bargs.widget_use.children.iter().map(|child| {
+                build_gtk_widget(
+                    bargs.scope_graph,
+                    bargs.widget_defs.clone(),
+                    bargs.calling_scope,
+                    child.clone(),
+                    bargs.custom_widget_invocation.clone(),
+                )
+            });
+            // we know that we have exactly two children here, so we can unwrap here.
+            let (popover, content) = children.next_tuple().unwrap();
+            let (popover_content, content) = (popover?, content?);
+
+            gtk_widget.add(&content);
+
+            // do not hide the popover when clicking inside it
+            popover_content.add_events(gdk::EventMask::BUTTON_PRESS_MASK);
+            connect_signal_handler!(popover_content, popover_content.connect_button_press_event(|_, _| { gtk::Inhibit(true) }));
+            let popover_protector = gtk::EventBox::new();
+            popover_protector.add_events(gdk::EventMask::BUTTON_PRESS_MASK);
+            connect_signal_handler!(
+                popover_protector,
+                popover_protector.connect_button_press_event(|_, _| { gtk::Inhibit(true) })
+            );
+            popover_protector.add(&popover_content);
+
+            let popover_window = gtk::Window::new(gtk::WindowType::Popup);
+            popover_window.add_events(gdk::EventMask::BUTTON_PRESS_MASK);
+            popover_window.set_widget_name("popover");
+            popover_window.set_resizable(false);
+            popover_window.add(&popover_protector);
+
+            let popover_window2 = popover_window.clone();
+            connect_signal_handler!(
+                gtk_widget,
+                gtk_widget.connect_button_press_event(move |this, evt| {
+                    if evt.button() == 3 {
+                        let toplevel: gtk::Window = this.toplevel().unwrap().dynamic_cast().unwrap();
+                        popover_window.set_transient_for(Some(&toplevel));
+
+                        let allocation = this.allocation();
+                        let x = this.translate_coordinates(&this.toplevel().unwrap(), 0, 0).unwrap().0 + allocation.width() / 2;
+
+                        popover_window.realize();
+                        popover_window.window().unwrap().move_to_rect(
+                            &Rectangle::new(0, 6, 0, allocation.height()),
+                            Gravity::South,
+                            Gravity::North,
+                            AnchorHints::FLIP_Y | AnchorHints::SLIDE_X,
+                            x,
+                            0,
+                        );
+
+                        popover_window.display().default_seat().unwrap().grab(
+                            &toplevel.window().unwrap(),
+                            SeatCapabilities::ALL_POINTING,
+                            true,
+                            None,
+                            None,
+                            None,
+                        );
+
+                        popover_window.show_all();
+                        popover_window.grab_add();
+                    }
+                    gtk::Inhibit(false)
+                })
+            );
+            connect_signal_handler!(
+                popover_window2,
+                popover_window2.connect_button_press_event(|this, _| {
+                    this.hide();
+                    this.grab_remove();
+                    Display::default().unwrap().default_seat().unwrap().ungrab();
+                    gtk::Inhibit(false)
+                })
+            );
+            connect_signal_handler!(
+                popover_window2,
+                popover_window2.connect_unmap(|this| {
+                    this.hide();
+                    this.grab_remove();
+                    Display::default().unwrap().default_seat().unwrap().ungrab();
+                })
+            );
 
             Ok(gtk_widget)
         }

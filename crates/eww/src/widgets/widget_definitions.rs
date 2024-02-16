@@ -669,8 +669,6 @@ fn build_popovered(bargs: &mut BuilderArgs) -> Result<gtk::Box> {
             gtk_widget.add(&content);
 
             // do not hide the popover when clicking inside it
-            popover_content.add_events(gdk::EventMask::BUTTON_PRESS_MASK);
-            connect_signal_handler!(popover_content, popover_content.connect_button_press_event(|_, _| { gtk::Inhibit(true) }));
             let popover_protector = gtk::EventBox::new();
             popover_protector.add_events(gdk::EventMask::BUTTON_PRESS_MASK);
             connect_signal_handler!(

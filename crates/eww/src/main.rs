@@ -1,10 +1,3 @@
-#![feature(trace_macros)]
-#![feature(extract_if)]
-#![feature(box_patterns)]
-#![feature(slice_concat_trait)]
-#![feature(try_blocks)]
-#![feature(hash_extract_if)]
-#![feature(let_chains)]
 #![allow(rustdoc::private_intra_doc_links)]
 
 extern crate gtk;
@@ -193,7 +186,7 @@ fn listen_for_daemon_response(mut recv: DaemonResponseReceiver) {
 /// attempt to send a command to the daemon and send it the given action repeatedly.
 fn handle_server_command(paths: &EwwPaths, action: &ActionWithServer, connect_attempts: usize) -> Result<Option<DaemonResponse>> {
     log::debug!("Trying to find server process at socket {}", paths.get_ipc_socket_file().display());
-    let mut stream = attempt_connect(&paths.get_ipc_socket_file(), connect_attempts).context("Failed to connect to daemon")?;
+    let mut stream = attempt_connect(paths.get_ipc_socket_file(), connect_attempts).context("Failed to connect to daemon")?;
     log::debug!("Connected to Eww server ({}).", &paths.get_ipc_socket_file().display());
     client::do_server_call(&mut stream, action).context("Error while forwarding command to server")
 }

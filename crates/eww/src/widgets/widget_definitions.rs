@@ -873,7 +873,8 @@ fn build_gtk_label(bargs: &mut BuilderArgs) -> Result<gtk::Label> {
 
     def_widget!(bargs, _g, gtk_widget, {
         // @prop text - the text to display
-        prop(text: as_string) {
+        // @prop unindent - whether to remove leading spaces
+        prop(text: as_string, unindent: as_bool = true) {
             let text = unescape::unescape(&text).context(format!("Failed to unescape label text {}", &text))?;
             let text = if unindent { util::unindent(&text) } else { text };
             gtk_widget.set_text(&text);

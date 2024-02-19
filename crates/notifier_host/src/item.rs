@@ -61,6 +61,7 @@ fn split_service_name(service: &str) -> zbus::Result<(String, String)> {
 
 pub struct Item {
     pub sni: dbus::StatusNotifierItemProxy<'static>,
+    gtk_menu: Option<dbusmenu_gtk3::Menu>,
 }
 
 impl Item {
@@ -68,7 +69,7 @@ impl Item {
         let (addr, path) = split_service_name(addr)?;
         let sni = dbus::StatusNotifierItemProxy::builder(con).destination(addr)?.path(path)?.build().await?;
 
-        Ok(Item { sni })
+        Ok(Self { sni, gtk_menu: None })
     }
 
     /// Get the current status of the item.
@@ -80,10 +81,20 @@ impl Item {
         }
     }
 
-    pub async fn menu(&self) -> zbus::Result<gtk::Menu> {
-        // TODO better handling if menu() method doesn't exist
-        let menu = dbusmenu_gtk3::Menu::new(self.sni.destination(), &self.sni.menu().await?);
-        Ok(menu.upcast())
+    pub async fn set_menu(&mut self) -> zbus::Result<()> {
+        let menu = self.sni.menu().await?;
+        self.gtk_menu = Some(dbusmenu_gtk3::Menu::new(self.sni.destination(), &menu));
+        Ok(())
+    }
+
+    pub async fn popup_menu(&self, widget: &gtk::EventBox, event: &gdk::EventButton, x: i32, y: i32) -> zbus::Result<()> {
+        if let Some(menu) = &self.gtk_menu {
+            menu.set_attach_widget(Some(widget));
+            menu.popup_at_pointer(event.downcast_ref::<gdk::Event>());
+            Ok(())
+        } else {
+            self.sni.context_menu(x, y).await
+        }
     }
 
     pub async fn icon(&self, size: i32, scale: i32) -> Option<gtk::gdk_pixbuf::Pixbuf> {

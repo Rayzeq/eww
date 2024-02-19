@@ -32,6 +32,7 @@ All notable changes to eww will be listed here, starting at changes since versio
 - Switch to stable rust toolchain (1.76)
 - Add `tooltip` widget, which allows setting a custom tooltip (not only text), to a widget (By: Rayzeq)
 - Add `eww shell-completions` command, generating completion scripts for different shells
+- Add `systray` widget (By: ralismark)
 
 ### Fixes
 - Fix wrong values in `EWW_NET`

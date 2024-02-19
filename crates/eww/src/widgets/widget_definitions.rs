@@ -3,7 +3,7 @@ use super::{build_widget::BuilderArgs, circular_progressbar::*, run_command, tra
 use crate::{
     def_widget, enum_parse, error_handling_ctx,
     util::{self, list_difference},
-    widgets::build_widget::build_gtk_widget,
+    widgets::{build_widget::build_gtk_widget, systray},
 };
 use anyhow::{anyhow, Context, Result};
 use codespan_reporting::diagnostic::Severity;
@@ -83,6 +83,7 @@ pub const BUILTIN_WIDGET_NAMES: &[&str] = &[
     WIDGET_NAME_SCROLL,
     WIDGET_NAME_OVERLAY,
     WIDGET_NAME_STACK,
+    WIDGET_NAME_SYSTRAY,
 ];
 
 /// widget definitions
@@ -113,6 +114,7 @@ pub(super) fn widget_use_to_gtk_widget(bargs: &mut BuilderArgs) -> Result<gtk::W
         WIDGET_NAME_SCROLL => build_gtk_scrolledwindow(bargs)?.upcast(),
         WIDGET_NAME_OVERLAY => build_gtk_overlay(bargs)?.upcast(),
         WIDGET_NAME_STACK => build_gtk_stack(bargs)?.upcast(),
+        WIDGET_NAME_SYSTRAY => build_systray(bargs)?.upcast(),
         _ => {
             return Err(DiagError(gen_diagnostic! {
                 msg = format!("referenced unknown widget `{}`", bargs.widget_use.name),
@@ -1232,6 +1234,36 @@ fn build_graph(bargs: &mut BuilderArgs) -> Result<super::graph::Graph> {
         prop(line_style: as_string) { w.set_property("line-style", line_style); },
     });
     Ok(w)
+}
+
+const WIDGET_NAME_SYSTRAY: &str = "systray";
+/// @widget systray
+/// @desc Tray for system notifier icons
+fn build_systray(bargs: &mut BuilderArgs) -> Result<gtk::Box> {
+    let gtk_widget = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    let props = Rc::new(systray::Props::new());
+    let props_clone = props.clone(); // copies for def_widget
+
+    def_widget!(bargs, _g, gtk_widget, {
+        // @prop spacing - spacing between elements
+        prop(spacing: as_i32 = 0) { gtk_widget.set_spacing(spacing) },
+        // @prop orientation - orientation of the box. possible values: $orientation
+        prop(orientation: as_string) { gtk_widget.set_orientation(parse_orientation(&orientation)?) },
+        // @prop space-evenly - space the widgets evenly.
+        prop(space_evenly: as_bool = true) { gtk_widget.set_homogeneous(space_evenly) },
+        // @prop icon-size - size of icons in the tray
+        prop(icon_size: as_i32) {
+            if icon_size <= 0 {
+                log::warn!("Icon size is not a positive number");
+            } else {
+                props.icon_size(icon_size);
+            }
+        },
+    });
+
+    systray::spawn_systray(&gtk_widget, &props_clone);
+
+    Ok(gtk_widget)
 }
 
 /// @var orientation - "vertical", "v", "horizontal", "h"

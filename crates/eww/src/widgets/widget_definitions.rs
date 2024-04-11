@@ -697,6 +697,7 @@ fn build_popovered(bargs: &mut BuilderArgs) -> Result<gtk::Box> {
                 popover_protector.connect_button_press_event(|_, _| { gtk::Inhibit(true) })
             );
             popover_protector.add(&popover_content);
+            popover_protector.show();
 
             let popover_window = gtk::Window::new(gtk::WindowType::Popup);
             popover_window.add_events(gdk::EventMask::BUTTON_PRESS_MASK);
@@ -734,7 +735,7 @@ fn build_popovered(bargs: &mut BuilderArgs) -> Result<gtk::Box> {
                             None,
                         );
 
-                        popover_window.show_all();
+                        popover_window.show();
                         popover_window.grab_add();
                     }
                     gtk::Inhibit(false)
